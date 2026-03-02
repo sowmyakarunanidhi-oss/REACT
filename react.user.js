@@ -520,6 +520,22 @@ headerTitle.textContent = '⚡ REACT ⚡';
         return false;
     }
 
+    // ✅ NEW: Detect if the current case has been successfully resolved
+function isCaseResolved() {
+    const bodyText = document.body.innerText.toLowerCase();
+    return bodyText.includes('successfully resolved audit') ||
+           bodyText.includes('successfully resolved') || bodyText.includes('successfully');
+}
+
+// ✅ NEW: Detect if agent is idle (no active case, not on break, not offline)
+function isIdle() {
+    const currentCaseId = getCaseIdFromUrl();
+    if (!currentCaseId) return !isOnBreak() && !isOffline(); // No case in URL = idle
+
+    // Case URL still open — check if it was already resolved
+    return isCaseResolved() && !isOnBreak() && !isOffline();
+}
+
 function getParagonAvailableTime() {
     const timerElements = document.querySelectorAll('.timerText');
 
@@ -660,7 +676,11 @@ function updateACHT() {
     const offline = isOffline();
 
     // ✅ NEW: Only add current case time if actively working (not on break/offline)
-    if (storedCaseStartTime && storedLastCaseId && !onBreak && !offline) {
+    const idle = isIdle(); // ✅ NEW
+
+    const paragonTimerWorking = isRegularCaseWindow() ? getParagonAvailableTime() !== null : true; // ✅ NEW
+
+if (storedCaseStartTime && storedLastCaseId && !onBreak && !offline && !idle && paragonTimerWorking) {
         const now = Date.now();
         const currentCaseTime = Math.floor((now - storedCaseStartTime) / 1000);
 
@@ -1059,6 +1079,13 @@ if (onBreak) {
         let currentCaseTime;
         let totalTimeSpent;
 
+          // ✅ NEW: Idle check — reset case timer and freeze ACHT when no active case
+        if (isIdle()) {
+            timerDisplay.textContent = `Time in this case: 00:00:00`;
+            updateACHT(); // ACHT will freeze since idle = true
+            return;
+        }
+
         if (isRegularCaseWindow()) {
             const paragonAvailTime = getParagonAvailableTime();
             const caseTime = getCaseTimer();
@@ -1084,7 +1111,12 @@ if (onBreak) {
             if (caseTime !== null) {
                 currentCaseTime = caseTime;
                 GM_setValue(caseTimeKey, currentCaseTime);
-            } else {
+            }else if (isCaseResolved()) {
+                // ✅ NEW: Case resolved but still on case URL — reset case timer
+                currentCaseTime = 0;
+                GM_setValue(caseTimeKey, 0);}
+
+            else {
                 currentCaseTime = GM_getValue(caseTimeKey, 0);
             }
         } else {
@@ -1224,8 +1256,8 @@ async function incrementCounter() {
             // Still update lastCaseId to track we've seen this case
             lastCaseId = String(currentCaseId);
             GM_setValue(lastCaseKey, String(currentCaseId));
-            caseStartTime = now;
-            GM_setValue(caseStartTimeKey, caseStartTime);
+            //caseStartTime = now;
+           // GM_setValue(caseStartTimeKey, caseStartTime);
             return;
         }
 
@@ -1434,14 +1466,14 @@ function monitorPAAAPI() {
         if (typeof url === 'string' &&
             url.includes('prod-na.auditor-central.paragon.amazon.dev/#/audit-actions-widget')) {
 
-            console.log('   PAA API detected:', url);
+            console.log('�� PAA API detected:', url);
 
             // Extract case ID from URL or use current case
             const urlCaseIdMatch = url.match(/caseId=(\d+)/);
             const urlCaseId = urlCaseIdMatch ? urlCaseIdMatch : null;
             const targetCaseId = urlCaseId || getCaseIdFromUrl() || lastCaseId;
 
-            console.log('   Target case ID for PAA:', targetCaseId);
+            console.log('�� Target case ID for PAA:', targetCaseId);
 
             if (targetCaseId) {
                 let caseDetails = GM_getValue(caseDetailsKey, []);
@@ -1457,7 +1489,7 @@ function monitorPAAAPI() {
                     let pendingPAA = GM_getValue(pendingPAAKey, {});
                     pendingPAA[targetCaseId] = 'PAA';
                     GM_setValue(pendingPAAKey, pendingPAA);
-                    console.log('   Stored pending PAA status for:', targetCaseId);
+                    console.log('�� Stored pending PAA status for:', targetCaseId);
                 }
             } else {
                 console.error('❌ Could not determine case ID for PAA');
@@ -1473,13 +1505,13 @@ function monitorPAAAPI() {
         if (typeof url === 'string' &&
             url.includes('prod-na.auditor-central.paragon.amazon.dev/#/audit-actions-widget')) {
 
-            console.log('   PAA API detected (XHR):', url);
+            console.log('�� PAA API detected (XHR):', url);
 
             const urlCaseIdMatch = url.match(/caseId=(\d+)/);
             const urlCaseId = urlCaseIdMatch ? urlCaseIdMatch : null;
             const targetCaseId = urlCaseId || getCaseIdFromUrl() || lastCaseId;
 
-            console.log('   Target case ID for PAA:', targetCaseId);
+            console.log('�� Target case ID for PAA:', targetCaseId);
 
             if (targetCaseId) {
                 let caseDetails = GM_getValue(caseDetailsKey, []);
@@ -1494,7 +1526,7 @@ function monitorPAAAPI() {
                     let pendingPAA = GM_getValue(pendingPAAKey, {});
                     pendingPAA[targetCaseId] = 'PAA';
                     GM_setValue(pendingPAAKey, pendingPAA);
-                    console.log('   Stored pending PAA status for:', targetCaseId);
+                    console.log('�� Stored pending PAA status for:', targetCaseId);
                 }
             } else {
                 console.error('❌ Could not determine case ID for PAA');
@@ -1741,3 +1773,4 @@ console.log('✅ ACHT Buddy v8.5 initialized - Added PAA status tracking');
 
 
 })();
+
