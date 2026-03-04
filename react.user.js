@@ -543,9 +543,9 @@ function getParagonAvailableTime() {
         const text = element.textContent.trim();
         const timeMatch = text.match(/(\d{1,2}):(\d{2}):(\d{2})/);
         if (timeMatch) {
-            const hours = parseInt(timeMatch);    // ✅ FIXED - added
-            const minutes = parseInt(timeMatch);  // ✅ FIXED - added
-            const seconds = parseInt(timeMatch);  // ✅ FIXED - added
+            const hours = parseInt(timeMatch[1]);    // ✅ FIXED - added
+            const minutes = parseInt(timeMatch[2]);  // ✅ FIXED - added
+            const seconds = parseInt(timeMatch[3]);  // ✅ FIXED - added
             return hours * 3600 + minutes * 60 + seconds;  // ✅ Return single value
         }
     }
@@ -1773,4 +1773,5 @@ console.log('✅ ACHT Buddy v8.5 initialized - Added PAA status tracking');
 
 
 })();
+
 
