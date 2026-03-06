@@ -84,6 +84,10 @@ XMLHttpRequest.prototype.send = function(body) {
     let wasOffline = GM_getValue(wasOfflineKey, false);
     let caseStartTime = GM_getValue(caseStartTimeKey, null);
 
+    const skippedCasesKey = `skippedCases_${today}`;
+let skippedCaseIds = new Set(GM_getValue(skippedCasesKey, []));
+
+
     const container = document.createElement('div');
     container.id = 'paragon-case-counter';
     Object.assign(container.style, {
@@ -529,6 +533,7 @@ function isCaseResolved() {
 
 // ✅ NEW: Detect if agent is idle (no active case, not on break, not offline)
 function isIdle() {
+        if (isAdminCase()) return false;
     const currentCaseId = getCaseIdFromUrl();
     if (!currentCaseId) return !isOnBreak() && !isOffline(); // No case in URL = idle
 
@@ -681,17 +686,17 @@ function updateACHT() {
     const paragonTimerWorking = isRegularCaseWindow() ? getParagonAvailableTime() !== null : true; // ✅ NEW
 
 if (storedCaseStartTime && storedLastCaseId && !onBreak && !offline && !idle && paragonTimerWorking) {
-        const now = Date.now();
-        const currentCaseTime = Math.floor((now - storedCaseStartTime) / 1000);
+    const now = Date.now();
+    const currentCaseTime = Math.floor((now - storedCaseStartTime) / 1000);
 
-        // Check if this case is already in caseDetails (avoid double counting)
-        const alreadyRecorded = caseDetails.some(detail => detail.caseId === storedLastCaseId);
+    const alreadyRecorded = caseDetails.some(detail => detail.caseId === storedLastCaseId);
+    const isSkipped = skippedCaseIds.has(String(storedLastCaseId));  // ✅ FIX
 
-        if (!alreadyRecorded) {
-            totalAuditTime += currentCaseTime;
-            currentCaseCount += 1;
-        }
+    if (!alreadyRecorded && !isSkipped) {  // ✅ FIX
+        totalAuditTime += currentCaseTime;
+        currentCaseCount += 1;
     }
+}
 
  if (currentCaseCount > 0) {
     const achtSeconds = totalAuditTime / currentCaseCount;
@@ -740,21 +745,25 @@ if (storedCaseStartTime && storedLastCaseId && !onBreak && !offline && !idle && 
 
 
 
+
 function exportToCSV() {
-    // ✅ FIX: Save current case if one is open (captures last case)
+    // ✅ FIX 1: Move caseDetails declaration to TOP of function (outside the if block)
+    let caseDetails = GM_getValue(caseDetailsKey, []);
+
+    // ✅ FIX 2: Save current case if one is open (captures last case)
     const currentCaseId = getCaseIdFromUrl();
     if (currentCaseId && caseStartTime && isValidForCaseCounting()) {
         const now = Date.now();
         const timeSpent = Math.floor((now - caseStartTime) / 1000);
 
-        let caseDetails = GM_getValue(caseDetailsKey, []);
+        // ✅ REMOVED: "let caseDetails = GM_getValue(caseDetailsKey, []);" was here — DELETED
         const marketplace = window.location.href.includes('paragon-eu') ? 'EU' :
                           window.location.href.includes('paragon-na') ? 'NA' :
                           window.location.href.includes('paragon-fe') ? 'FE' : 'Unknown';
 
         // Check if this case is already in the array (avoid duplicates)
         const existingIndex = caseDetails.findIndex(d => d.caseId === currentCaseId);
-        if (existingIndex === -1) {
+        if (existingIndex === -1 && !skippedCaseIds.has(String(currentCaseId))) {  // ✅ skipped check
             caseDetails.push({
                 caseId: currentCaseId,
                 marketplace: marketplace,
@@ -766,10 +775,9 @@ function exportToCSV() {
             GM_setValue(caseDetailsKey, caseDetails);
             console.log('💾 Current case captured for export:', currentCaseId);
         }
-    }
+    }  // ✅ FIX 2: THIS CLOSING BRACE WAS MISSING — NOW ADDED
 
     // Get updated case details after capturing current case
-    const caseDetails = GM_getValue(caseDetailsKey, []);
     const currentCaseCount = caseDetails.length;
     const currentMarketplaceCounts = GM_getValue(marketplaceKey, {});
 
@@ -817,11 +825,10 @@ function exportToCSV() {
         });
 
         // ✅ Add status at the end
-    const status = detail.status || '';
+        const status = detail.status || '';
 
         // ✅ FIX: Use dateStr (not today), separate time columns
-        detailedCsvContent += `${dateStr},${detail.caseId},${detail.marketplace},${startTimeStr},${endTimeStr},${timeFormatted},${status}\r
-`;
+        detailedCsvContent += `${dateStr},${detail.caseId},${detail.marketplace},${startTimeStr},${endTimeStr},${timeFormatted},${status}\r`;
     });
 
     // Update export history
@@ -869,7 +876,7 @@ function exportToCSV() {
         const summaryBlob = new Blob([summaryCsvContent], { type: 'text/csv;charset=utf-8;' });
         const summaryLink = document.createElement('a');
         const summaryUrl = URL.createObjectURL(summaryBlob);
-        summaryLink.setAttribute('href', summaryUrl);
+        summaryLink.setAttribute('href', summaryUrl);;
         summaryLink.setAttribute('download', 'ACHT_Buddy_Daily_Summary.csv');
         summaryLink.style.visibility = 'hidden';
         document.body.appendChild(summaryLink);
@@ -891,7 +898,8 @@ function exportToCSV() {
 
 
 
-    function applyMinimizeState(minimized) {
+
+   function applyMinimizeState(minimized) {
         if (minimized) {
             contentContainer.style.display = 'none';
             minimizeButton.textContent = '+';
@@ -994,6 +1002,7 @@ if (onBreak) {
         GM_setValue(breakStartTimeKey, breakStartTime);
         GM_setValue(caseTimeKey, 0);
         GM_setValue(caseStartTimeKey, null); // new added
+        localStorage.removeItem('acht_caseStartTime');
 
 
     const currentCaseId = getCaseIdFromUrl();
@@ -1010,20 +1019,20 @@ if (onBreak) {
             let pendingPAA = GM_getValue(pendingPAAKey, {});
             const status = pendingPAA[currentCaseId] ? 'PAA' : '';
 
-            const existingIndex = caseDetails.findIndex(d => d.caseId === currentCaseId);
-            if (existingIndex === -1) {
-                caseDetails.push({
-                    caseId: currentCaseId,
-                    marketplace: marketplace,
-                    startTime: new Date(caseStartTime).toISOString(),
-                    endTime: new Date(now).toISOString(),
-                    timeSpent: timeSpent,
-                    status: status
-                });
-                GM_setValue(caseDetailsKey, caseDetails);
-                 recalculateMarketplaceCounts();
-                console.log('💾 Case saved on break with status:', status);
-            }
+const existingIndex = caseDetails.findIndex(d => d.caseId === currentCaseId);
+if (existingIndex === -1 && !skippedCaseIds.has(String(currentCaseId))) {  // ✅ FIX
+    caseDetails.push({
+        caseId: currentCaseId,
+        marketplace: marketplace,
+        startTime: new Date(caseStartTime).toISOString(),
+        endTime: new Date(now).toISOString(),
+        timeSpent: timeSpent,
+        status: status
+    });
+    GM_setValue(caseDetailsKey, caseDetails);
+    recalculateMarketplaceCounts();
+    console.log('💾 Case saved on break with status:', status);
+}
         }
     }
 
@@ -1117,11 +1126,14 @@ if (onBreak) {
                 GM_setValue(caseTimeKey, 0);}
 
             else {
-                currentCaseTime = GM_getValue(caseTimeKey, 0);
+                  const _storedStart = GM_getValue(caseStartTimeKey, null);
+    currentCaseTime = _storedStart ? Math.floor((Date.now() - _storedStart) / 1000) : GM_getValue(caseTimeKey, 0);
             }
-        } else {
-            // Admin case or other window - read from storage
-            currentCaseTime = GM_getValue(caseTimeKey, 0);
+              } else {
+            // Admin window - read live caseStartTime from localStorage
+            const lsStart = localStorage.getItem('acht_caseStartTime');
+            const _storedStart = lsStart ? parseInt(lsStart, 10) : null;
+            currentCaseTime = _storedStart ? Math.floor((Date.now() - _storedStart) / 1000) : GM_getValue(caseTimeKey, 0);
             totalTimeSpent = GM_getValue(totalTimeKey, 0);
         }
 
@@ -1160,6 +1172,10 @@ if (onBreak) {
 
 
 
+
+
+
+
 async function incrementCounter() {
     console.log('🔍 incrementCounter called - Current count:', GM_getValue(storageKey, 0));
 
@@ -1180,8 +1196,25 @@ async function incrementCounter() {
     if (String(currentCaseId) !== String(lastCaseId)) {
         const now = Date.now();
 
-        // Save previous case details if exists
-        if (lastCaseId && lastCaseId !== '' && caseStartTime) {
+        // ✅ FIX: Ask for confirmation FIRST before saving anything
+        const isAutoAssigned = await confirmAutoAssignment(currentCaseId);
+
+        if (!isAutoAssigned) {
+            console.log('❌ User confirmed case was NOT auto-assigned - skipping increment');
+            // Still update lastCaseId to track we've seen this case
+            lastCaseId = String(currentCaseId);
+            GM_setValue(lastCaseKey, String(currentCaseId));
+            // ✅ FIX: Persist this case ID as skipped so save block ignores it even after page reload
+            skippedCaseIds.add(String(currentCaseId));
+            GM_setValue(skippedCasesKey, [...skippedCaseIds]);
+            //caseStartTime = now;
+            // GM_setValue(caseStartTimeKey, caseStartTime);
+            return;
+        }
+
+        // ✅ FIX: Save previous case ONLY AFTER user clicked Yes
+        // ✅ FIX: Also skip saving if lastCaseId was a skipped (No) case
+        if (lastCaseId && lastCaseId !== '' && caseStartTime && !skippedCaseIds.has(String(lastCaseId))) {
             const timeSpent = Math.floor((now - caseStartTime) / 1000);
 
             let caseDetails = GM_getValue(caseDetailsKey, []);
@@ -1248,23 +1281,11 @@ async function incrementCounter() {
             }
         }
 
-        // Ask for confirmation before incrementing
-        const isAutoAssigned = await confirmAutoAssignment(currentCaseId);
-
-        if (!isAutoAssigned) {
-            console.log('❌ User confirmed case was NOT auto-assigned - skipping increment');
-            // Still update lastCaseId to track we've seen this case
-            lastCaseId = String(currentCaseId);
-            GM_setValue(lastCaseKey, String(currentCaseId));
-            //caseStartTime = now;
-           // GM_setValue(caseStartTimeKey, caseStartTime);
-            return;
-        }
-
         console.log('✅ User confirmed case WAS auto-assigned - incrementing counter');
 
         caseStartTime = now;
         GM_setValue(caseStartTimeKey, caseStartTime);
+        localStorage.setItem('acht_caseStartTime', String(caseStartTime));
 
         lastCaseId = String(currentCaseId);
         GM_setValue(lastCaseKey, String(currentCaseId));
@@ -1299,7 +1320,9 @@ async function incrementCounter() {
     }
 
     return '';  // Empty for normal cases
-}
+} 
+
+ 
 
 
 
@@ -1769,9 +1792,9 @@ function monitorPAAAPI() {
 // Add this line after monitorRejectAPI();
 monitorPAAAPI();
 
+    startTimerSync();   // ← ADD THIS LINE
+
 console.log('✅ ACHT Buddy v8.5 initialized - Added PAA status tracking');
 
 
 })();
-
-
