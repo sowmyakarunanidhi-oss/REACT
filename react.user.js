@@ -1117,13 +1117,16 @@ if (existingIndex === -1 && !skippedCaseIds.has(String(currentCaseId))) {  // �
                 totalTimeSpent = GM_getValue(totalTimeKey, 0);
             }
 
-            if (caseTime !== null) {
+            /*if (caseTime !== null) {
                 currentCaseTime = caseTime;
                 GM_setValue(caseTimeKey, currentCaseTime);
             }else if (isCaseResolved()) {
                 // ✅ NEW: Case resolved but still on case URL — reset case timer
                 currentCaseTime = 0;
-                GM_setValue(caseTimeKey, 0);}
+                GM_setValue(caseTimeKey, 0);
+            GM_setValue(caseStartTimeKey, null);  // ✅ ADD THIS LINE
+    localStorage.removeItem('acht_caseStartTime');  // ✅ ADD THIS LINE
+            }
 
             else {
                   const _storedStart = GM_getValue(caseStartTimeKey, null);
@@ -1135,7 +1138,20 @@ if (existingIndex === -1 && !skippedCaseIds.has(String(currentCaseId))) {  // �
             const _storedStart = lsStart ? parseInt(lsStart, 10) : null;
             currentCaseTime = _storedStart ? Math.floor((Date.now() - _storedStart) / 1000) : GM_getValue(caseTimeKey, 0);
             totalTimeSpent = GM_getValue(totalTimeKey, 0);
+        }*/
+
+                        if (caseTime !== null) {
+                currentCaseTime = caseTime;
+                GM_setValue(caseTimeKey, currentCaseTime);
+            } else {
+                currentCaseTime = GM_getValue(caseTimeKey, 0);
+            }
+        } else {
+            // Admin case or other window - read from storage
+            currentCaseTime = GM_getValue(caseTimeKey, 0);
+            totalTimeSpent = GM_getValue(totalTimeKey, 0);
         }
+
 
         timerDisplay.textContent = `Time in this case: ${formatTime(currentCaseTime)}`;
         totalTimeDisplay.textContent = `Total avail time: ${formatTime(totalTimeSpent)}`;
